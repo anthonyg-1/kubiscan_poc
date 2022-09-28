@@ -10,7 +10,6 @@ $namespace = "default"
 # Get all pod names in order to iterate through each name to generate an individual manifest per pod:
 $allPodNames = (kubectl get pods --namespace $namespace --output json | ConvertFrom-Json).items.metadata.name | Sort-Object
 
-
 function ConvertFrom-Sarif {
     <#
         .SYNOPSIS
@@ -28,10 +27,11 @@ function ConvertFrom-Sarif {
     )
 
     PROCESS {
-        $deserializedPodAuditScanResults = $null
+        [PSCustomObject]$auditFinding = $null
 
+        [PSCustomObject]$deserializedPodAuditScanResults = $null
         try {
-            $deserializedPodAuditScanResults = ($InputString | ConvertFrom-Json -Depth 25).runs.results
+            $deserializedPodAuditScanResults = ($InputString | ConvertFrom-Json -Depth 25 -ErrorAction Stop).runs.results
         }
         catch {
             $jsonDeserializationExMessage = "Unable to deserialize JSON input string."
@@ -41,10 +41,10 @@ function ConvertFrom-Sarif {
 
         $deserializedPodAuditScanResults | ForEach-Object {
             try {
-                $messageTextHash = $_.message.text | ConvertFrom-StringData -Delimiter ":"
-                $messageObject = New-Object -TypeName PSObject -Property $messageTextHash
+                $messageTextHash = $_.message.text | ConvertFrom-StringData -Delimiter ":" -ErrorAction Stop
+                $messageObject = New-Object -TypeName PSObject -Property $messageTextHash -ErrorAction Stop
 
-                [PSCustomObject]@{
+                $auditFinding = [PSCustomObject]@{
                     RuleID        = $_.ruleId
                     Level         = $_.level.ToUpper()
                     Auditor       = $messageObject.Auditor
@@ -59,6 +59,8 @@ function ConvertFrom-Sarif {
                 $sarifException = [System.IO.FileFormatException]::new($sarifParsingExMessage)
                 Write-Error -Exception $sarifException -ErrorAction Stop
             }
+
+            return $auditFinding
         }
     }
 }
@@ -75,4 +77,6 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     $rawJsonResult | ConvertFrom-Sarif
 }
 
-$allAuditFindings | Where-Object -Property Level -eq ERROR
+$filteredView = $allAuditFindings | Where-Object -Property Level -eq ERROR
+
+Write-Output -InputObject $filteredView
