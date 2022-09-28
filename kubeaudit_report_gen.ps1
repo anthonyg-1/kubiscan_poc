@@ -5,8 +5,10 @@ using namespace System.Management.Automation
 
 #requires -Version 7
 
-# Global variables:
+# Output directory for pod manifest files:
 $manifestDirectory = "/home/tony/code/kubeaudit/manifests"
+
+# Target namespace that the pods are resident in:
 $namespace = "default"
 
 # Get all pod names in order to iterate through each name to generate an individual manifest per pod:
