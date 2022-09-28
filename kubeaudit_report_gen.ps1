@@ -21,7 +21,6 @@ function ConvertFrom-Sarif {
             System.String
         .OUTPUTS
             System.Management.Automation.PSCustomObject
-
     #>
     [CmdletBinding()]
     Param (
