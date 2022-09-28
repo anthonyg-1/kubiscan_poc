@@ -29,9 +29,8 @@ function ConvertFrom-Sarif {
     )
 
     PROCESS {
-        [PSCustomObject]$auditFinding = $null
-
         [PSCustomObject]$deserializedPodAuditScanResults = $null
+
         try {
             $deserializedPodAuditScanResults = ($InputString | ConvertFrom-Json -Depth 25 -ErrorAction Stop).runs.results
         }
@@ -42,6 +41,8 @@ function ConvertFrom-Sarif {
         }
 
         $deserializedPodAuditScanResults | ForEach-Object {
+            [PSCustomObject]$auditFinding = $null
+
             try {
                 $messageTextHash = $_.message.text | ConvertFrom-StringData -Delimiter ":" -ErrorAction Stop
                 $messageObject = New-Object -TypeName PSObject -Property $messageTextHash -ErrorAction Stop
