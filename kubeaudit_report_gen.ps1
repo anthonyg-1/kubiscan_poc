@@ -70,18 +70,29 @@ function ConvertFrom-Sarif {
     }
 }
 
+# Declare empty array to contain all resulting audit objects:
+$allAuditFindings = @()
+
+# 1. Iterate through all pod names
+# 2. Generate a manifest for each pod
+# 3. Run kubeaudit against each manifest and persist results to $rawJsonResult variable
+# 4. Deserialize each $rawJsonResult via ConvertFrom-Sarif and add to $allAuditFindings
 $allAuditFindings = $allPodNames | ForEach-Object {
     # Build the file path for the resulting manifest file and write to directory:
     $manifestFileName = "{0}.yaml" -f $_
     $manifestFilePath = Join-Path -Path $manifestDirectory -ChildPath $manifestFileName
     kubectl get pod $_ --namespace $namespace --output yaml | Out-File -FilePath $manifestFilePath
 
-    # Get the JSON result from kubeaudit using the sarif format and
-    # send to the ConvertFrom-Sarif function to parse the data:
-    $rawJsonResult = (kubeaudit all -f $manifestFilePath --format="sarif") -join ""
+    # With docker, map the local manifest directory to the /tmp directory on the container, and execute the following command:
+    # kubeaudit all -f <manifest file path> --format="sarif" ...
+    # ...and join on literally nothing as this is necessary for string output to be deserialized by ConvertFrom-Json (inside of ConvertFrom-Sarif)
+    # to recognize the string as a single string entry and not an array of strings. Weird, I know.
+    $rawJsonResult = $(docker run -v $manifestDirectory/:/tmp shopify/kubeaudit all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
+
+    # Deserialize and add item to array $allAuditFindings
     $rawJsonResult | ConvertFrom-Sarif
 }
 
+# Sample filtered view returning only errors (no warnings):
 $filteredView = $allAuditFindings | Where-Object -Property Level -eq ERROR
-
 Write-Output -InputObject $filteredView
