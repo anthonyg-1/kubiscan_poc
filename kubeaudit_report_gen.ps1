@@ -3,6 +3,8 @@
 using namespace System
 using namespace System.Management.Automation
 
+#requires -Version 7
+
 # Global variables:
 $manifestDirectory = "/home/tony/code/kubeaudit/manifests"
 $namespace = "default"
