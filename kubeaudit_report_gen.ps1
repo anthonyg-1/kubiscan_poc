@@ -7,9 +7,9 @@ using namespace System.Runtime.Serialization
 
 #requires -Version 7
 
-
 # Docker image for kubaudit:
-$DockerImage = "shopify/kubeaudit:v0.20"
+$KubeauditDockerImageVersion = "0.20.0"
+$KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
 
 # Target namespace that the pods are resident in:
 $Namespace = "default"
@@ -17,19 +17,26 @@ $Namespace = "default"
 # Output directory for pod manifest files:
 $ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
 
+# Determine that image exists based on the desired version:
+$detectedVersion = docker run --rm $KubeauditDockerImage version
+if (($null -eq $detectedVersion) -or ([Version]$detectedVersion -ne [Version]$KubeauditDockerImageVersion)) {
+    $imageVersionExMessage = "Unable to obtain the following docker image: {0}" -f $KubeauditDockerImage
+    $ArgumentException = [ArgumentException]::new($imageVersionExMessage)
+    Write-Error -Exception $ArgumentException -Category InvalidArgument -ErrorAction Stop
+}
 
 # Determine that $ManifestDirectory exists:
 if (-not(Test-Path -Path $ManifestDirectory)) {
     $fileNotFoundExMessage = "The following directory was not found: {0}" -f $ManifestDirectory
     $FileNotFoundException = [FileNotFoundException]::new($fileNotFoundExMessage)
-    Write-Error -Exception $FileNotFoundException -ErrorAction Stop
+    Write-Error -Exception $FileNotFoundException -Category InvalidOperation -ErrorAction Stop
 }
 
 # Get all pod names in order to iterate through each name to generate an individual manifest per pod:
 [string[]]$allPodNames = @()
 try {
-    $argExMessage = "Error when attempting to list pods in {0} namespace." -f $Namespace
-    $ArgumentException = [ArgumentException]::new($argExMessage)
+    $podQueryExMessage = "Error when attempting to list pods in {0} namespace." -f $Namespace
+    $ArgumentException = [ArgumentException]::new($podQueryExMessage)
 
     $allPodsJson = kubectl get pods --namespace $Namespace --output json
     $deserializedPodData = $allPodsJson | ConvertFrom-Json -ErrorAction Stop
@@ -42,7 +49,7 @@ try {
     }
 }
 catch {
-    Write-Error -Exception $ArgumentException -ErrorAction Stop
+    Write-Error -Exception $ArgumentException -Category InvalidArgument -ErrorAction Stop
 }
 
 function ConvertFrom-Sarif {
@@ -70,7 +77,7 @@ function ConvertFrom-Sarif {
         catch {
             $jsonDeserializationExMessage = "Unable to deserialize JSON input string."
             $SerializationException = [SerializationException]::new($jsonDeserializationExMessage)
-            Write-Error -Exception $SerializationException -ErrorAction Stop
+            Write-Error -Exception $SerializationException -Category InvalidType -ErrorAction Stop
         }
 
         $deserializedPodAuditScanResults | ForEach-Object {
@@ -92,6 +99,7 @@ function ConvertFrom-Sarif {
                     Description   = $messageObject.Description
                     Documentation = $messageObject.'Auditor docs'
                     PodName       = $podName
+                    Namespace     = $Namespace
                     ManifestFile  = $podManifestFileName
                 }
                 Write-Output -InputObject $auditFinding
@@ -99,7 +107,7 @@ function ConvertFrom-Sarif {
             catch {
                 $sarifParsingExMessage = "Unable to parse SARIF input string."
                 $FileFormatException = [FileFormatException]::new($sarifParsingExMessage)
-                Write-Error -Exception $FileFormatException -ErrorAction Stop
+                Write-Error -Exception $FileFormatException -Category InvalidType -ErrorAction Stop
             }
         }
     }
@@ -122,7 +130,7 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     # kubeaudit all -f <manifest file path> --format="sarif" ...
     # ...and join on literally nothing as this is necessary for string output to be deserialized by ConvertFrom-Json (inside of ConvertFrom-Sarif)
     # to recognize the string as a single string entry and not an array of strings. Weird, I know.
-    $rawJsonResult = $(docker run -v $ManifestDirectory/:/tmp $DockerImage all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
+    $rawJsonResult = $(docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
 
     # Deserialize and add item to array $allAuditFindings:
     $rawJsonResult | ConvertFrom-Sarif
