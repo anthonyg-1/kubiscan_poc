@@ -13,6 +13,9 @@ $ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
 # Target namespace that the pods are resident in:
 $Namespace = "default"
 
+# Docker image for kubaudit:
+$DockerImage = "shopify/kubeaudit:v0.20"
+
 
 # Determine that $ManifestDirectory exists:
 if (-not(Test-Path -Path $ManifestDirectory)) {
@@ -71,9 +74,15 @@ function ConvertFrom-Sarif {
 
         $deserializedPodAuditScanResults | ForEach-Object {
             try {
-                $messageTextHash = $_.message.text | ConvertFrom-StringData -Delimiter ":" -ErrorAction Stop
-                $messageObject = New-Object -TypeName PSObject -Property $messageTextHash -ErrorAction Stop
+                # Parse message.text and create new PSObject based on that:
+                $messageTextHashTable = $_.message.text | ConvertFrom-StringData -Delimiter ":" -ErrorAction Stop
+                $messageObject = New-Object -TypeName PSObject -Property $messageTextHashTable -ErrorAction Stop
 
+                # Obtain the pod name and corresponding manifest file:
+                $podManifestFileName = Split-Path -Path $_.locations.physicalLocation.artifactLocation.uri -Leaf
+                $podName = $podManifestFileName.Split(".")[0]
+
+                # Generate object,populate property, and send to pipeline:
                 $auditFinding = [PSCustomObject]@{
                     RuleID        = $_.ruleId
                     Level         = $_.level.ToUpper()
@@ -81,9 +90,9 @@ function ConvertFrom-Sarif {
                     Details       = $messageObject.Details
                     Description   = $messageObject.Description
                     Documentation = $messageObject.'Auditor docs'
-                    ManifestFile  = $(Split-Path -Path $_.locations.physicalLocation.artifactLocation.uri -Leaf)
+                    PodName       = $podName
+                    ManifestFile  = $podManifestFileName
                 }
-
                 Write-Output -InputObject $auditFinding
             }
             catch {
@@ -112,7 +121,7 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     # kubeaudit all -f <manifest file path> --format="sarif" ...
     # ...and join on literally nothing as this is necessary for string output to be deserialized by ConvertFrom-Json (inside of ConvertFrom-Sarif)
     # to recognize the string as a single string entry and not an array of strings. Weird, I know.
-    $rawJsonResult = $(docker run -v $ManifestDirectory/:/tmp shopify/kubeaudit all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
+    $rawJsonResult = $(docker run -v $ManifestDirectory/:/tmp $DockerImage all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
 
     # Deserialize and add item to array $allAuditFindings:
     $rawJsonResult | ConvertFrom-Sarif
