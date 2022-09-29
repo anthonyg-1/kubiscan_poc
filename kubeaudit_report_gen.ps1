@@ -43,8 +43,6 @@ function ConvertFrom-Sarif {
         }
 
         $deserializedPodAuditScanResults | ForEach-Object {
-            [PSCustomObject]$auditFinding = $null
-
             try {
                 $messageTextHash = $_.message.text | ConvertFrom-StringData -Delimiter ":" -ErrorAction Stop
                 $messageObject = New-Object -TypeName PSObject -Property $messageTextHash -ErrorAction Stop
@@ -58,14 +56,14 @@ function ConvertFrom-Sarif {
                     Documentation = $messageObject.'Auditor docs'
                     ManifestFile  = $(Split-Path -Path $_.locations.physicalLocation.artifactLocation.uri -Leaf)
                 }
+
+                Write-Output -InputObject $auditFinding
             }
             catch {
                 $sarifParsingExMessage = "Unable to parse SARIF input string."
                 $sarifException = [System.IO.FileFormatException]::new($sarifParsingExMessage)
                 Write-Error -Exception $sarifException -ErrorAction Stop
             }
-
-            return $auditFinding
         }
     }
 }
