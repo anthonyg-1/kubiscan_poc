@@ -89,7 +89,7 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     # to recognize the string as a single string entry and not an array of strings. Weird, I know.
     $rawJsonResult = $(docker run -v $manifestDirectory/:/tmp shopify/kubeaudit all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
 
-    # Deserialize and add item to array $allAuditFindings
+    # Deserialize and add item to array $allAuditFindings:
     $rawJsonResult | ConvertFrom-Sarif
 }
 
