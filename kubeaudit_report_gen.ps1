@@ -6,6 +6,7 @@ using namespace System.Management.Automation
 using namespace System.Runtime.Serialization
 
 #requires -Version 7
+#requires -Modules Pester
 
 # Docker image for kubaudit:
 $KubeauditDockerImageVersion = "0.20.0"
