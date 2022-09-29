@@ -93,6 +93,11 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     $rawJsonResult | ConvertFrom-Sarif
 }
 
+# Cleanup local manifest files:
+Get-ChildItem -Path $manifestDirectory -Filter "*.yaml" | ForEach-Object {
+    Remove-Item -Path $_.FullName -Force | Out-Null
+}
+
 # Sample filtered view returning only errors (no warnings):
 $filteredView = $allAuditFindings | Where-Object -Property Level -eq ERROR
 Write-Output -InputObject $filteredView
