@@ -8,7 +8,7 @@ using namespace System.Runtime.Serialization
 #requires -Version 7
 #requires -Modules Pester
 
-# Docker image for kubaudit:
+# Docker image for kubeaudit:
 $KubeauditDockerImageVersion = "0.20.0"
 $KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
 
