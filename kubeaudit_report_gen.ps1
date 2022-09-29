@@ -7,14 +7,15 @@ using namespace System.Runtime.Serialization
 
 #requires -Version 7
 
-# Output directory for pod manifest files:
-$ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
+
+# Docker image for kubaudit:
+$DockerImage = "shopify/kubeaudit:v0.20"
 
 # Target namespace that the pods are resident in:
 $Namespace = "default"
 
-# Docker image for kubaudit:
-$DockerImage = "shopify/kubeaudit:v0.20"
+# Output directory for pod manifest files:
+$ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
 
 
 # Determine that $ManifestDirectory exists:
