@@ -56,7 +56,7 @@ function ConvertFrom-Sarif {
                     Details       = $messageObject.Details
                     Description   = $messageObject.Description
                     Documentation = $messageObject.'Auditor docs'
-                    ManifestFile  = $_.locations.physicalLocation.artifactLocation.uri
+                    ManifestFile  = $(Split-Path -Path $_.locations.physicalLocation.artifactLocation.uri -Leaf)
                 }
             }
             catch {
