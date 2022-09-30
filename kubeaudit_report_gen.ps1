@@ -6,7 +6,7 @@ using namespace System.Management.Automation
 using namespace System.Runtime.Serialization
 
 #requires -Version 7
-#requires -Modules Pester
+#requires -Modules ImportExcel
 
 # Docker image for kubeaudit:
 $KubeauditDockerImageVersion = "0.20.0"
@@ -18,6 +18,10 @@ $Namespace = "default"
 # Output directory for pod manifest files:
 $ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
 
+# Output directory and file path for Excel file:
+$OutputReportDirectory = "/home/tony/code/kubeaudit/reports"
+$ReportFilePath = "{0}\Kubeaudit_Report_{1}.xlsx" -f $OutputReportDirectory, (Get-Date).ToShortDateString() -replace "/", "_"
+
 # Determine that image exists based on the desired version:
 $detectedVersion = docker run --rm $KubeauditDockerImage version
 if (($null -eq $detectedVersion) -or ([Version]$detectedVersion -ne [Version]$KubeauditDockerImageVersion)) {
@@ -28,9 +32,16 @@ if (($null -eq $detectedVersion) -or ([Version]$detectedVersion -ne [Version]$Ku
 
 # Determine that $ManifestDirectory exists:
 if (-not(Test-Path -Path $ManifestDirectory)) {
-    $fileNotFoundExMessage = "The following directory was not found: {0}" -f $ManifestDirectory
-    $FileNotFoundException = [FileNotFoundException]::new($fileNotFoundExMessage)
-    Write-Error -Exception $FileNotFoundException -Category InvalidOperation -ErrorAction Stop
+    $dirNotFoundExMessage = "The following directory was not found: {0}" -f $ManifestDirectory
+    $DirectoryNotFoundException = [DirectoryNotFoundException]::new($dirNotFoundExMessage)
+    Write-Error -Exception $DirectoryNotFoundException  -Category InvalidOperation -ErrorAction Stop
+}
+
+# Determine that $OutputReportDirectory exists:
+if (-not(Test-Path -Path $OutputReportDirectory)) {
+    $dirNotFoundExMessage = "The following directory was not found: {0}" -f $OutputReportDirectory
+    $DirectoryNotFoundException = [DirectoryNotFoundException]::new($fileNotFoundExMessage)
+    Write-Error -Exception $DirectoryNotFoundException  -Category InvalidOperation -ErrorAction Stop
 }
 
 # Get all pod names in order to iterate through each name to generate an individual manifest per pod:
@@ -94,14 +105,13 @@ function ConvertFrom-Sarif {
                 # Generate object,populate property, and send to pipeline:
                 $auditFinding = [PSCustomObject]@{
                     RuleID        = $_.ruleId
-                    Level         = $_.level.ToUpper()
+                    Level         = $_.level
                     Auditor       = $messageObject.Auditor
                     Details       = $messageObject.Details
                     Description   = $messageObject.Description
                     Documentation = $messageObject.'Auditor docs'
                     PodName       = $podName
                     Namespace     = $Namespace
-                    ManifestFile  = $podManifestFileName
                 }
                 Write-Output -InputObject $auditFinding
             }
@@ -142,6 +152,15 @@ Get-ChildItem -Path $ManifestDirectory -Filter "*.yaml" | ForEach-Object {
     Remove-Item -Path $_.FullName -Force | Out-Null
 }
 
-# Sample filtered view returning only errors (no warnings):
-$filteredView = $allAuditFindings | Where-Object -Property Level -eq ERROR
-Write-Output -InputObject $filteredView
+# Collection containing only errors (no warnings):
+$allErrors = $allAuditFindings | Where-Object -Property Level -eq ERROR
+
+# Generate error report:
+$excelExportProps = @{
+    Path            = $ReportFilePath
+    TableName       = "KubeauditFindings"
+    ConditionalText = $(New-ConditionalText -Text "error" -ForeGroundColor Red -BackgroundColor default)
+    TitleBold       = $true
+    AutoSize        = $true
+}
+$allErrors | Export-Excel @excelExportProps
