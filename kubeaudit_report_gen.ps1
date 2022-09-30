@@ -20,7 +20,8 @@ $ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
 
 # Output directory and file path for Excel file:
 $OutputReportDirectory = "/home/tony/code/kubeaudit/reports"
-$ReportFilePath = "{0}\Kubeaudit_Report_{1}.xlsx" -f $OutputReportDirectory, (Get-Date).ToShortDateString() -replace "/", "_"
+$ReportFileName = "Kubeaudit_Report_{0}.xlsx" -f (Get-Date).ToShortDateString() -replace "/", "_"
+$ReportFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $ReportFileName
 
 # Determine that image exists based on the desired version:
 $detectedVersion = docker run --rm $KubeauditDockerImage version
@@ -40,8 +41,13 @@ if (-not(Test-Path -Path $ManifestDirectory)) {
 # Determine that $OutputReportDirectory exists:
 if (-not(Test-Path -Path $OutputReportDirectory)) {
     $dirNotFoundExMessage = "The following directory was not found: {0}" -f $OutputReportDirectory
-    $DirectoryNotFoundException = [DirectoryNotFoundException]::new($fileNotFoundExMessage)
+    $DirectoryNotFoundException = [DirectoryNotFoundException]::new($dirNotFoundExMessage)
     Write-Error -Exception $DirectoryNotFoundException  -Category InvalidOperation -ErrorAction Stop
+}
+
+# If prior report exists, delete it:
+if (Test-Path -Path $ReportFilePath) {
+    Remove-Item -Path $ReportFilePath -Force
 }
 
 # Get all pod names in order to iterate through each name to generate an individual manifest per pod:
@@ -141,7 +147,7 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     # kubeaudit all -f <manifest file path> --format="sarif" ...
     # ...and join on literally nothing as this is necessary for string output to be deserialized by ConvertFrom-Json (inside of ConvertFrom-Sarif)
     # to recognize the string as a single string entry and not an array of strings. Weird, I know.
-    $rawJsonResult = $(docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
+    $rawJsonResult = (docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
 
     # Deserialize and add item to array $allAuditFindings:
     $rawJsonResult | ConvertFrom-Sarif
@@ -155,12 +161,20 @@ Get-ChildItem -Path $ManifestDirectory -Filter "*.yaml" | ForEach-Object {
 # Collection containing only errors (no warnings):
 $allErrors = $allAuditFindings | Where-Object -Property Level -eq ERROR
 
+# Clear console prior to rendering output:
+Clear-Host
+
 # Generate error report:
 $excelExportProps = @{
     Path            = $ReportFilePath
     TableName       = "KubeauditFindings"
-    ConditionalText = $(New-ConditionalText -Text "error" -ForeGroundColor Red -BackgroundColor default)
+    ConditionalText = (New-ConditionalText -Text "error" -ForeGroundColor Red -BackgroundColor default)
     TitleBold       = $true
     AutoSize        = $true
+    WarningAction   = "SilentlyContinue"
 }
 $allErrors | Export-Excel @excelExportProps
+
+Write-Output -InputObject $allErrors
+
+Write-Verbose -Message ("Kubeaudit report written succesfully to the following path: {0}" -f $ReportFilePath) -Verbose
