@@ -8,6 +8,7 @@ using namespace System.Runtime.Serialization
 #requires -Version 7
 #requires -Modules ImportExcel
 
+# SECTION Global variables (likely parameters in a future version)
 # Docker image for kubeaudit:
 $KubeauditDockerImageVersion = "0.20.0"
 $KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
@@ -19,9 +20,14 @@ $Namespace = "default"
 $ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
 
 # Output directory and file path for Excel file:
-$OutputReportDirectory = "/home/tony/code/kubeaudit/reports"
-$ReportFileName = "Kubeaudit_Report_{0}.xlsx" -f (Get-Date).ToShortDateString() -replace "/", "_"
-$ReportFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $ReportFileName
+$outputReportDirectory = "/home/tony/code/kubeaudit/reports"
+$reportFileName = "Kubeaudit_Report_{0}.xlsx" -f (Get-Date).ToShortDateString() -replace "/", "_"
+$ReportFilePath = Join-Path -Path $outputReportDirectory -ChildPath $reportFileName
+
+# !SECTION
+
+
+# SECTION Checks
 
 # Determine that image exists based on the desired version:
 $detectedVersion = docker run --rm $KubeauditDockerImage version
@@ -38,9 +44,9 @@ if (-not(Test-Path -Path $ManifestDirectory)) {
     Write-Error -Exception $DirectoryNotFoundException  -Category InvalidOperation -ErrorAction Stop
 }
 
-# Determine that $OutputReportDirectory exists:
-if (-not(Test-Path -Path $OutputReportDirectory)) {
-    $dirNotFoundExMessage = "The following directory was not found: {0}" -f $OutputReportDirectory
+# Determine that $outputReportDirectory exists:
+if (-not(Test-Path -Path $outputReportDirectory)) {
+    $dirNotFoundExMessage = "The following directory was not found: {0}" -f $outputReportDirectory
     $DirectoryNotFoundException = [DirectoryNotFoundException]::new($dirNotFoundExMessage)
     Write-Error -Exception $DirectoryNotFoundException  -Category InvalidOperation -ErrorAction Stop
 }
@@ -50,26 +56,10 @@ if (Test-Path -Path $ReportFilePath) {
     Remove-Item -Path $ReportFilePath -Force
 }
 
-# Get all pod names in order to iterate through each name to generate an individual manifest per pod:
-[string[]]$allPodNames = @()
-try {
-    $podQueryExMessage = "Error when attempting to list pods in {0} namespace." -f $Namespace
-    $ArgumentException = [ArgumentException]::new($podQueryExMessage)
+# !SECTION
 
-    $allPodsJson = kubectl get pods --namespace $Namespace --output json
-    $deserializedPodData = $allPodsJson | ConvertFrom-Json -ErrorAction Stop
 
-    if ($deserializedPodData.items.Count -gt 0) {
-        $allPodNames += $deserializedPodData.items.metadata.name | Sort-Object
-    }
-    else {
-        throw $ArgumentException
-    }
-}
-catch {
-    Write-Error -Exception $ArgumentException -Category InvalidArgument -ErrorAction Stop
-}
-
+# SECTION Functions
 function ConvertFrom-Sarif {
     <#
         .SYNOPSIS
@@ -116,7 +106,7 @@ function ConvertFrom-Sarif {
                     Details       = $messageObject.Details
                     Description   = $messageObject.Description
                     Documentation = $messageObject.'Auditor docs'
-                    PodName       = $podName
+                    Pod           = $podName
                     Namespace     = $Namespace
                 }
                 Write-Output -InputObject $auditFinding
@@ -130,6 +120,34 @@ function ConvertFrom-Sarif {
     }
 }
 
+# !SECTION
+
+
+# SECTION Get pod names
+# Get all pod names in order to iterate through each name to generate an individual manifest per pod:
+[string[]]$allPodNames = @()
+try {
+    $podQueryExMessage = "Error when attempting to list pods in {0} namespace." -f $Namespace
+    $ArgumentException = [ArgumentException]::new($podQueryExMessage)
+
+    $allPodsJson = kubectl get pods --namespace $Namespace --output json
+    $deserializedPodData = $allPodsJson | ConvertFrom-Json -ErrorAction Stop
+
+    if ($deserializedPodData.items.Count -gt 0) {
+        $allPodNames += $deserializedPodData.items.metadata.name | Sort-Object
+    }
+    else {
+        throw $ArgumentException
+    }
+}
+catch {
+    Write-Error -Exception $ArgumentException -Category InvalidArgument -ErrorAction Stop
+}
+
+# !SECTION
+
+
+# SECTION Execute Kubeaudit and obtain all findings
 # Declare empty array to contain all resulting audit objects:
 $allAuditFindings = @()
 
@@ -153,16 +171,21 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     $rawJsonResult | ConvertFrom-Sarif
 }
 
+# !SECTION
+
+
+# SECTION Cleanup manifest files
 # Cleanup local manifest files:
 Get-ChildItem -Path $ManifestDirectory -Filter "*.yaml" | ForEach-Object {
     Remove-Item -Path $_.FullName -Force | Out-Null
 }
 
-# Collection containing only errors (no warnings):
-$allErrors = $allAuditFindings | Where-Object -Property Level -eq ERROR
+# !SECTION
 
-# Clear console prior to rendering output:
-Clear-Host
+
+# SECTION Generate Excel error report
+# Collection containing only errors (no warnings):
+$errorCollection = $allAuditFindings | Where-Object -Property Level -eq ERROR
 
 # Generate error report:
 $excelExportProps = @{
@@ -173,8 +196,24 @@ $excelExportProps = @{
     AutoSize        = $true
     WarningAction   = "SilentlyContinue"
 }
-$allErrors | Export-Excel @excelExportProps
-
-Write-Output -InputObject $allErrors
+$errorCollection | Export-Excel @excelExportProps
 
 Write-Verbose -Message ("Kubeaudit report written succesfully to the following path: {0}" -f $ReportFilePath) -Verbose
+
+# !SECTION
+
+
+# SECTION Pester tests
+$clusterName = kubectl config view --minify -o jsonpath='{.clusters[].name}'
+$namespace = $errorCollection | Select-Object -Unique -ExpandProperty Namespace -First 1
+
+Describe "$clusterName" {
+    Context $namespace -ForEach $errorCollection {
+        $podName = $_.Pod
+        It "$podName" {
+            $_.Details | Should -BeNullOrEmpty
+        }
+    }
+}
+
+# !SECTION
