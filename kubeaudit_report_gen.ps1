@@ -6,7 +6,8 @@ using namespace System.Management.Automation
 using namespace System.Runtime.Serialization
 
 #requires -Version 7
-#requires -Modules ImportExcel
+#requires -Modules ImportExcel, Pester
+
 
 # SECTION Global variables (likely parameters in a future version)
 # Docker image for kubeaudit:
@@ -19,10 +20,18 @@ $Namespace = "default"
 # Output directory for pod manifest files:
 $ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
 
+# Get today's date as part of file names:
+$todaysDate = Get-Date
+
 # Output directory and file path for Excel file:
 $outputReportDirectory = "/home/tony/code/kubeaudit/reports"
-$reportFileName = "Kubeaudit_Report_{0}.xlsx" -f (Get-Date).ToShortDateString() -replace "/", "_"
-$ReportFilePath = Join-Path -Path $outputReportDirectory -ChildPath $reportFileName
+$excelFileName = "Kubeaudit_Report_{0}.xlsx" -f $todaysDate.ToShortDateString() -replace "/", "_"
+$ExcelFilePath = Join-Path -Path $outputReportDirectory -ChildPath $excelFileName
+
+# NOTE The section below has JSON results as optional
+$IncludeJsonResults = $true
+$jsonFileName = $excelFileName = "Kubeaudit_Report_{0}.json" -f $todaysDate.ToShortDateString() -replace "/", "_"
+$JsonFilePath = Join-Path -Path $outputReportDirectory -ChildPath $jsonFileName
 
 # !SECTION
 
@@ -52,8 +61,8 @@ if (-not(Test-Path -Path $outputReportDirectory)) {
 }
 
 # If prior report exists, delete it:
-if (Test-Path -Path $ReportFilePath) {
-    Remove-Item -Path $ReportFilePath -Force
+if (Test-Path -Path $ExcelFilePath) {
+    Remove-Item -Path $ExcelFilePath -Force
 }
 
 # !SECTION
@@ -161,10 +170,7 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     $manifestFilePath = Join-Path -Path $ManifestDirectory -ChildPath $manifestFileName
     kubectl get pod $_ --namespace $Namespace --output yaml | Out-File -FilePath $manifestFilePath
 
-    # With docker, map the local manifest directory to the /tmp directory on the container, and execute the following command:
-    # kubeaudit all -f <manifest file path> --format="sarif" ...
-    # ...and join on literally nothing as this is necessary for string output to be deserialized by ConvertFrom-Json (inside of ConvertFrom-Sarif)
-    # to recognize the string as a single string entry and not an array of strings. Weird, I know.
+    # Run kubeaudit, get sarif output and assign it to the $rawJsonResult as a single string (via -join ""):
     $rawJsonResult = (docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
 
     # Deserialize and add item to array $allAuditFindings:
@@ -183,22 +189,43 @@ Get-ChildItem -Path $ManifestDirectory -Filter "*.yaml" | ForEach-Object {
 # !SECTION
 
 
-# SECTION Generate Excel error report
+# SECTION Generate Excel and JSON error reports
 # Collection containing only errors (no warnings):
 $errorCollection = $allAuditFindings | Where-Object -Property Level -eq ERROR
 
 # Generate error report:
 $excelExportProps = @{
-    Path            = $ReportFilePath
+    Path            = $ExcelFilePath
     TableName       = "KubeauditFindings"
     ConditionalText = (New-ConditionalText -Text "error" -ForeGroundColor Red -BackgroundColor default)
     TitleBold       = $true
     AutoSize        = $true
     WarningAction   = "SilentlyContinue"
+    ErrorAction     = "Stop"
 }
-$errorCollection | Export-Excel @excelExportProps
 
-Write-Verbose -Message ("Kubeaudit report written succesfully to the following path: {0}" -f $ReportFilePath) -Verbose
+try {
+    $errorCollection | Export-Excel @excelExportProps
+}
+catch {
+    $unauthorizedAccessExMessage = "Unable to write Excel file to: {0}" -f $ExcelFilePath
+    $UnauthorizedAccessException = [UnauthorizedAccessException]::new($unauthorizedAccessExMessage)
+    Write-Error -Exception $UnauthorizedAccessException -Category SecurityError -ErrorAction Stop
+}
+
+if ($IncludeJsonResults) {
+    try {
+        $errorCollection | ConvertTo-Json -ErrorAction Stop | Out-File -FilePath $JsonFilePath -ErrorAction Stop
+        Write-Verbose -Message ("Kubeaudit JSON data written succesfully to the following path: {0}" -f $JsonFilePath) -Verbose
+    }
+    catch {
+        $unauthorizedAccessExMessage = "Unable to write JSON file to: {0}" -f $JsonFilePath
+        $UnauthorizedAccessException = [UnauthorizedAccessException]::new($unauthorizedAccessExMessage)
+        Write-Error -Exception $UnauthorizedAccessException -Category SecurityError -ErrorAction Stop
+    }
+}
+
+Write-Verbose -Message ("Kubeaudit Excel report written succesfully to the following path: {0}" -f $ExcelFilePath) -Verbose
 
 # !SECTION
 
