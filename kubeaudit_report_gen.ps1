@@ -109,14 +109,14 @@ function ConvertFrom-Sarif {
 
                 # Generate object,populate property, and send to pipeline:
                 $auditFinding = [PSCustomObject]@{
+                    Namespace     = $Namespace
+                    Pod           = $podName
                     RuleID        = $_.ruleId
                     Level         = $_.level
                     Auditor       = $messageObject.Auditor
                     Details       = $messageObject.Details
                     Description   = $messageObject.Description
                     Documentation = $messageObject.'Auditor docs'
-                    Pod           = $podName
-                    Namespace     = $Namespace
                 }
                 Write-Output -InputObject $auditFinding
             }
