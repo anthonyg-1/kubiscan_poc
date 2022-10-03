@@ -15,16 +15,16 @@ $KubeauditDockerImageVersion = "0.20.0"
 $KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
 
 # Target namespace that the pods are resident in:
-$Namespace = "default"
+$Namespace = "big-monolith"
 
 # Output directory for pod manifest files:
-$ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
+$ManifestDirectory = "C:\code\kubeaudit\manifests"
 
 # Get today's date as part of file names:
 $todaysDate = Get-Date
 
 # Output directory and file path for Excel file:
-$OutputReportDirectory = "/home/tony/code/kubeaudit/reports"
+$OutputReportDirectory = "C:\code\kubeaudit\reports"
 $excelFileName = "Kubeaudit_Report_{0}.xlsx" -f $todaysDate.ToShortDateString() -replace "/", "_"
 $ExcelFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $excelFileName
 
@@ -171,7 +171,7 @@ $allAuditFindings = $allPodNames | ForEach-Object {
     kubectl get pod $_ --namespace $Namespace --output yaml | Out-File -FilePath $manifestFilePath
 
     # Run kubeaudit, get sarif output and assign it to the $rawJsonResult as a single string (via -join ""):
-    $rawJsonResult = (docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2>/dev/null) -join ""
+    $rawJsonResult = (docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2> $null) -join ""
 
     # Deserialize and add item to array $allAuditFindings:
     $rawJsonResult | ConvertFrom-Sarif
