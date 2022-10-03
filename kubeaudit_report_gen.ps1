@@ -21,10 +21,10 @@ $Namespace = "default"
 $todaysDate = Get-Date
 
 # Output directory for pod manifest files:
-$ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
+$ManifestDirectory = "C:\code\kubeaudit\manifests"
 
 # Output directory and file path for Excel file:
-$OutputReportDirectory = "/home/tony/code/kubeaudit/reports"
+$OutputReportDirectory = "C:\code\kubeaudit\reports"
 $excelFileName = "Kubeaudit_Report_{0}.xlsx" -f $todaysDate.ToShortDateString() -replace "/", "_"
 $ExcelFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $excelFileName
 
@@ -193,10 +193,13 @@ Get-ChildItem -Path $ManifestDirectory -Filter "*.yaml" | ForEach-Object {
 # Collection containing only errors (no warnings):
 $errorCollection = $allAuditFindings | Where-Object -Property Level -eq ERROR
 
+$tableAndWorksheetName = "KubeauditFindings"
+
 # Generate error report:
 $excelExportProps = @{
     Path            = $ExcelFilePath
-    TableName       = "KubeauditFindings"
+    TableName       = $tableAndWorksheetName
+    WorksheetName   = $tableAndWorksheetName
     ConditionalText = (New-ConditionalText -Text "error" -ForeGroundColor Red -BackgroundColor default)
     TitleBold       = $true
     AutoSize        = $true
