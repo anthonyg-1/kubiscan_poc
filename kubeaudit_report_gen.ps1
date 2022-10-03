@@ -33,6 +33,9 @@ $IncludeJsonResults = $true
 $jsonFileName = $excelFileName = "Kubeaudit_Report_{0}.json" -f $todaysDate.ToShortDateString() -replace "/", "_"
 $JsonFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $jsonFileName
 
+# Target cluster to run audit against:
+$ClusterName = kubectl config view --minify -o jsonpath='{.clusters[].name}'
+
 # !SECTION
 
 
@@ -109,6 +112,7 @@ function ConvertFrom-Sarif {
 
                 # Generate object,populate property, and send to pipeline:
                 $auditFinding = [PSCustomObject]@{
+                    Cluster       = $ClusterName
                     Namespace     = $Namespace
                     Pod           = $podName
                     RuleID        = $_.ruleId
@@ -234,10 +238,9 @@ Write-Verbose -Message ("Kubeaudit Excel report written succesfully to the follo
 
 
 # SECTION Pester tests
-$clusterName = kubectl config view --minify -o jsonpath='{.clusters[].name}'
 $namespace = $errorCollection | Select-Object -Unique -ExpandProperty Namespace -First 1
 
-Describe "$clusterName" {
+Describe "$ClusterName" {
     Context $namespace -ForEach $errorCollection {
         $podName = $_.Pod
         $auditor = $_.Auditor
