@@ -24,14 +24,14 @@ $ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
 $todaysDate = Get-Date
 
 # Output directory and file path for Excel file:
-$outputReportDirectory = "/home/tony/code/kubeaudit/reports"
+$OutputReportDirectory = "/home/tony/code/kubeaudit/reports"
 $excelFileName = "Kubeaudit_Report_{0}.xlsx" -f $todaysDate.ToShortDateString() -replace "/", "_"
-$ExcelFilePath = Join-Path -Path $outputReportDirectory -ChildPath $excelFileName
+$ExcelFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $excelFileName
 
 # NOTE The section below has JSON results as optional
 $IncludeJsonResults = $true
 $jsonFileName = $excelFileName = "Kubeaudit_Report_{0}.json" -f $todaysDate.ToShortDateString() -replace "/", "_"
-$JsonFilePath = Join-Path -Path $outputReportDirectory -ChildPath $jsonFileName
+$JsonFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $jsonFileName
 
 # !SECTION
 
@@ -53,9 +53,9 @@ if (-not(Test-Path -Path $ManifestDirectory)) {
     Write-Error -Exception $DirectoryNotFoundException  -Category InvalidOperation -ErrorAction Stop
 }
 
-# Determine that $outputReportDirectory exists:
-if (-not(Test-Path -Path $outputReportDirectory)) {
-    $dirNotFoundExMessage = "The following directory was not found: {0}" -f $outputReportDirectory
+# Determine that $OutputReportDirectory exists:
+if (-not(Test-Path -Path $OutputReportDirectory)) {
+    $dirNotFoundExMessage = "The following directory was not found: {0}" -f $OutputReportDirectory
     $DirectoryNotFoundException = [DirectoryNotFoundException]::new($dirNotFoundExMessage)
     Write-Error -Exception $DirectoryNotFoundException  -Category InvalidOperation -ErrorAction Stop
 }
