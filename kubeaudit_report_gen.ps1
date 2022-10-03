@@ -15,16 +15,16 @@ $KubeauditDockerImageVersion = "0.20.0"
 $KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
 
 # Target namespace that the pods are resident in:
-$Namespace = "big-monolith"
-
-# Output directory for pod manifest files:
-$ManifestDirectory = "C:\code\kubeaudit\manifests"
+$Namespace = "default"
 
 # Get today's date as part of file names:
 $todaysDate = Get-Date
 
+# Output directory for pod manifest files:
+$ManifestDirectory = "/home/tony/code/kubeaudit/manifests"
+
 # Output directory and file path for Excel file:
-$OutputReportDirectory = "C:\code\kubeaudit\reports"
+$OutputReportDirectory = "/home/tony/code/kubeaudit/reports"
 $excelFileName = "Kubeaudit_Report_{0}.xlsx" -f $todaysDate.ToShortDateString() -replace "/", "_"
 $ExcelFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $excelFileName
 
@@ -237,7 +237,8 @@ $namespace = $errorCollection | Select-Object -Unique -ExpandProperty Namespace 
 Describe "$clusterName" {
     Context $namespace -ForEach $errorCollection {
         $podName = $_.Pod
-        It "$podName" {
+        $auditor = $_.Auditor
+        It "$podName.$auditor" {
             $_.Details | Should -BeNullOrEmpty
         }
     }
