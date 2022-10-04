@@ -10,12 +10,13 @@ using namespace System.Runtime.Serialization
 
 
 # SECTION Global variables (likely parameters in a future version)
+
+# Target namespace that the pods are resident in:
+$Namespace = "default"
+
 # Docker image for kubeaudit:
 $KubeauditDockerImageVersion = "0.20.0"
 $KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
-
-# Target namespace that the pods are resident in:
-$Namespace = "big-monolith"
 
 # Get today's date as part of file names:
 $todaysDate = Get-Date
@@ -29,7 +30,7 @@ $excelFileName = "{0}_kubeaudit_report_{1}.xlsx" -f $Namespace, $todaysDate.ToSh
 $ExcelFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $excelFileName
 
 # NOTE The section below has JSON results as optional
-$IncludeJsonResults = $true
+$IncludeJsonResults = $false
 $jsonFileName = $excelFileName = "{0}_kubeaudit_raw_data_{1}.json" -f $Namespace, $todaysDate.ToShortDateString() -replace "/", "_"
 $JsonFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $jsonFileName
 
