@@ -15,7 +15,7 @@ $KubeauditDockerImageVersion = "0.20.0"
 $KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
 
 # Target namespace that the pods are resident in:
-$Namespace = "default"
+$Namespace = "big-monolith"
 
 # Get today's date as part of file names:
 $todaysDate = Get-Date
@@ -25,12 +25,12 @@ $ManifestDirectory = "C:\code\kubeaudit\manifests"
 
 # Output directory and file path for Excel file:
 $OutputReportDirectory = "C:\code\kubeaudit\reports"
-$excelFileName = "Kubeaudit_Report_{0}.xlsx" -f $todaysDate.ToShortDateString() -replace "/", "_"
+$excelFileName = "{0}_kubeaudit_report_{1}.xlsx" -f $Namespace, $todaysDate.ToShortDateString() -replace "/", "_"
 $ExcelFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $excelFileName
 
 # NOTE The section below has JSON results as optional
 $IncludeJsonResults = $true
-$jsonFileName = $excelFileName = "Kubeaudit_Report_{0}.json" -f $todaysDate.ToShortDateString() -replace "/", "_"
+$jsonFileName = $excelFileName = "{0}_kubeaudit_raw_data_{1}.json" -f $Namespace, $todaysDate.ToShortDateString() -replace "/", "_"
 $JsonFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $jsonFileName
 
 # Target cluster to run audit against:
