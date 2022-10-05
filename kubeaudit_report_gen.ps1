@@ -12,7 +12,7 @@ using namespace System.Runtime.Serialization
 # SECTION Global variables (likely parameters in a future version)
 
 # All target namespaces:
-$Namespaces = @('default')
+$Namespaces = @('gatekeeper-system', 'big-monolith')
 
 # Docker image for kubeaudit:
 $KubeauditDockerImageVersion = "0.20.0"
@@ -250,10 +250,11 @@ Write-Verbose -Message ("Kubeaudit Excel report written succesfully to the follo
 
 $targetNamespace = $errorCollection | Select-Object -Unique -ExpandProperty Namespace -First 1
 
-Describe "$ClusterName" {
-    Context $targetNamespace -ForEach $errorCollection {
-        $podName = $_.Pod
-        $auditor = $_.Auditor
+Describe "$ClusterName" -ForEach $errorCollection {
+    $targetNamespace = $_.Namespace
+    $podName = $_.Pod
+    $auditor = $_.Auditor
+    Context $targetNamespace {
         It "$podName.$auditor" {
             $_.Details | Should -BeNullOrEmpty
         }
