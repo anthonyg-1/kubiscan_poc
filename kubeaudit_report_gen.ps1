@@ -11,8 +11,8 @@ using namespace System.Runtime.Serialization
 
 # SECTION Global variables (likely parameters in a future version)
 
-# Target namespace that the pods are resident in:
-$Namespace = "default"
+# All target namespaces:
+$Namespaces = @('default')
 
 # Docker image for kubeaudit:
 $KubeauditDockerImageVersion = "0.20.0"
@@ -26,12 +26,13 @@ $ManifestDirectory = "C:\code\kubeaudit\manifests"
 
 # Output directory and file path for Excel file:
 $OutputReportDirectory = "C:\code\kubeaudit\reports"
-$excelFileName = "{0}_kubeaudit_report_{1}.xlsx" -f $Namespace, $todaysDate.ToShortDateString() -replace "/", "_"
+
+$excelFileName = "kubeaudit_report_{0}.xlsx" -f $todaysDate.ToShortDateString() -replace "/", "_"
 $ExcelFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $excelFileName
 
-# NOTE The section below has JSON results as optional
+# NOTE Raw JSON results as optional
 $IncludeJsonResults = $false
-$jsonFileName = $excelFileName = "{0}_kubeaudit_raw_data_{1}.json" -f $Namespace, $todaysDate.ToShortDateString() -replace "/", "_"
+$jsonFileName = "kubeaudit_raw_data_{0}.json" -f $todaysDate.ToShortDateString() -replace "/", "_"
 $JsonFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $jsonFileName
 
 # Target cluster to run audit against:
@@ -62,11 +63,6 @@ if (-not(Test-Path -Path $OutputReportDirectory)) {
     $dirNotFoundExMessage = "The following directory was not found: {0}" -f $OutputReportDirectory
     $DirectoryNotFoundException = [DirectoryNotFoundException]::new($dirNotFoundExMessage)
     Write-Error -Exception $DirectoryNotFoundException  -Category InvalidOperation -ErrorAction Stop
-}
-
-# If prior report exists, delete it:
-if (Test-Path -Path $ExcelFilePath) {
-    Remove-Item -Path $ExcelFilePath -Force
 }
 
 # !SECTION
@@ -114,7 +110,7 @@ function ConvertFrom-Sarif {
                 # Generate object,populate property, and send to pipeline:
                 $auditFinding = [PSCustomObject]@{
                     Cluster       = $ClusterName
-                    Namespace     = $Namespace
+                    Namespace     = $targetNamespace
                     Pod           = $podName
                     RuleID        = $_.ruleId
                     Level         = $_.level
@@ -137,60 +133,67 @@ function ConvertFrom-Sarif {
 # !SECTION
 
 
-# SECTION Get pod names
-# Get all pod names in order to iterate through each name to generate an individual manifest per pod:
-[string[]]$allPodNames = @()
-try {
-    $podQueryExMessage = "Error when attempting to list pods in {0} namespace." -f $Namespace
-    $ArgumentException = [ArgumentException]::new($podQueryExMessage)
+# SECTION Namespace Iteration and Audit Finding Aggregation:
 
-    $allPodsJson = kubectl get pods --namespace $Namespace --output json
-    $deserializedPodData = $allPodsJson | ConvertFrom-Json -ErrorAction Stop
-
-    if ($deserializedPodData.items.Count -gt 0) {
-        $allPodNames += $deserializedPodData.items.metadata.name | Sort-Object
-    }
-    else {
-        throw $ArgumentException
-    }
-}
-catch {
-    Write-Error -Exception $ArgumentException -Category InvalidArgument -ErrorAction Stop
-}
-
-# !SECTION
-
-
-# SECTION Execute Kubeaudit and obtain all findings
 # Declare empty array to contain all resulting audit objects:
 $allAuditFindings = @()
 
-# 1. Iterate through all pod names
-# 2. Generate a manifest for each pod
-# 3. Run kubeaudit against each manifest and persist results to $rawJsonResult variable
-# 4. Deserialize each $rawJsonResult via ConvertFrom-Sarif and add to $allAuditFindings
-$allAuditFindings = $allPodNames | ForEach-Object {
-    # Build the file path for the resulting manifest file and write to directory:
-    $manifestFileName = "{0}.yaml" -f $_
-    $manifestFilePath = Join-Path -Path $ManifestDirectory -ChildPath $manifestFileName
-    kubectl get pod $_ --namespace $Namespace --output yaml | Out-File -FilePath $manifestFilePath
+foreach ($targetNamespace in $Namespaces) {
 
-    # Run kubeaudit, get sarif output and assign it to the $rawJsonResult as a single string (via -join ""):
-    $rawJsonResult = (docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2> $null) -join ""
+    # SECTION Get pod names
+    # Get all pod names in order to iterate through each name to generate an individual manifest per pod:
+    [string[]]$allPodNames = @()
+    try {
+        $podQueryExMessage = "Error when attempting to list pods in {0} namespace." -f $targetNamespace
+        $ArgumentException = [ArgumentException]::new($podQueryExMessage)
 
-    # Deserialize and add item to array $allAuditFindings:
-    $rawJsonResult | ConvertFrom-Sarif
+        $allPodsJson = kubectl get pods --namespace $targetNamespace --output json
+        $deserializedPodData = $allPodsJson | ConvertFrom-Json -ErrorAction Stop
+
+        if ($deserializedPodData.items.Count -gt 0) {
+            $allPodNames += $deserializedPodData.items.metadata.name | Sort-Object
+        }
+        else {
+            throw $ArgumentException
+        }
+    }
+    catch {
+        Write-Error -Exception $ArgumentException -Category InvalidArgument -ErrorAction Continue
+    }
+
+    # !SECTION
+
+
+    # SECTION Execute Kubeaudit and obtain all findings
+
+    # 1. Iterate through all pod names
+    # 2. Generate a manifest for each pod
+    # 3. Run kubeaudit against each manifest and persist results to $rawJsonResult variable
+    # 4. Deserialize each $rawJsonResult via ConvertFrom-Sarif and add to $allAuditFindings
+    $allAuditFindings += $allPodNames | ForEach-Object {
+        # Build the file path for the resulting manifest file and write to directory:
+        $manifestFileName = "{0}.yaml" -f $_
+        $manifestFilePath = Join-Path -Path $ManifestDirectory -ChildPath $manifestFileName
+        kubectl get pod $_ --namespace $targetNamespace --output yaml | Out-File -FilePath $manifestFilePath
+
+        # Run kubeaudit, get sarif output and assign it to the $rawJsonResult as a single string (via -join ""):
+        $rawJsonResult = (docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2> $null) -join ""
+
+        # Deserialize and add item to array $allAuditFindings:
+        $rawJsonResult | ConvertFrom-Sarif
+    }
+
+    # !SECTION
+
+
+    # SECTION Cleanup manifest files
+
+    Get-ChildItem -Path $ManifestDirectory -Filter "*.yaml" | ForEach-Object {
+        Remove-Item -Path $_.FullName -Force | Out-Null
+    }
+
+    # !SECTION
 }
-
-# !SECTION
-
-
-# SECTION Cleanup manifest files
-# Cleanup local manifest files:
-Get-ChildItem -Path $ManifestDirectory -Filter "*.yaml" | ForEach-Object {
-    Remove-Item -Path $_.FullName -Force | Out-Null
-}
-
 # !SECTION
 
 
@@ -199,6 +202,11 @@ Get-ChildItem -Path $ManifestDirectory -Filter "*.yaml" | ForEach-Object {
 $errorCollection = $allAuditFindings | Where-Object -Property Level -eq ERROR
 
 $tableAndWorksheetName = "KubeauditFindings"
+
+# If prior report exists, delete it:
+if (Test-Path -Path $ExcelFilePath) {
+    Remove-Item -Path $ExcelFilePath -Force
+}
 
 # Generate error report:
 $excelExportProps = @{
@@ -239,10 +247,11 @@ Write-Verbose -Message ("Kubeaudit Excel report written succesfully to the follo
 
 
 # SECTION Pester tests
-$namespace = $errorCollection | Select-Object -Unique -ExpandProperty Namespace -First 1
+
+$targetNamespace = $errorCollection | Select-Object -Unique -ExpandProperty Namespace -First 1
 
 Describe "$ClusterName" {
-    Context $namespace -ForEach $errorCollection {
+    Context $targetNamespace -ForEach $errorCollection {
         $podName = $_.Pod
         $auditor = $_.Auditor
         It "$podName.$auditor" {
