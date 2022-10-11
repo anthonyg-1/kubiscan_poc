@@ -13,34 +13,17 @@ using namespace System.Runtime.Serialization
 # SECTION Global Variables
 
 # All target namespaces:
-$Namespaces = @('tigera-access',
-    'tigera-compliance',
-    'tigera-dex',
-    'tigera-dpi',
-    'tigera-elasticsearch',
-    'tigera-fluentd',
-    'tigera-guardian',
-    'tigera-image-assurance',
-    'tigera-intrusion-detection',
-    'tigera-license',
-    'tigera-manager',
-    'tigera-operator',
-    'tigera-packetcapture',
-    'tigera-prometheus',
-    'tigera-skraper',
-    'tigera-system',
-    'calico-cloud',
-    'calico-system')
+$Namespaces = @('default')
 
 # Docker image for kubeaudit:
 $KubeauditDockerImageVersion = "0.20.0"
 $KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
 
 # Output directory for pod manifest files:
-$ManifestDirectory = "C:\code\kubeaudit\manifests"
+$ManifestDirectory = "./kubeaudit/manifests"
 
 # Output directory and file path for Excel file:
-$OutputReportDirectory = "C:\code\kubeaudit\reports"
+$OutputReportDirectory = "/kubeaudit/reports"
 
 # Get today's date as part of file names:
 $todaysDate = Get-Date
