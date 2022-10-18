@@ -23,7 +23,7 @@ $KubeauditDockerImage = "shopify/kubeaudit:v{0}" -f $KubeauditDockerImageVersion
 $ManifestDirectory = "./kubeaudit/manifests"
 
 # Output directory and file path for Excel file:
-$OutputReportDirectory = "/kubeaudit/reports"
+$OutputReportDirectory = "./kubeaudit/reports"
 
 # Get today's date as part of file names:
 $todaysDate = Get-Date
@@ -32,7 +32,7 @@ $excelFileName = "kubeaudit_report_{0}.xlsx" -f $todaysDate.ToShortDateString() 
 $ExcelFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $excelFileName
 
 # NOTE Raw JSON results as optional
-$IncludeJsonResults = $true
+$IncludeJsonResults = $false
 $jsonFileName = "kubeaudit_raw_data_{0}.json" -f $todaysDate.ToShortDateString() -replace "/", "_"
 $JsonFilePath = Join-Path -Path $OutputReportDirectory -ChildPath $jsonFileName
 
@@ -87,6 +87,9 @@ function ConvertFrom-RawSarif {
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)][Alias('JSON', 'InputJson')][String]$InputString
     )
     BEGIN {
+        # The intent of this hashtable is to eliminate duplicates from the deserialized sarif:
+        $uniqueResultsTable = @{}
+
         # TODO: Get this into a configuration file eventually:
         $cisBenchmarkTable = '[
             {
@@ -149,8 +152,10 @@ function ConvertFrom-RawSarif {
                 $podManifestFileName = Split-Path -Path $_.locations.physicalLocation.artifactLocation.uri -Leaf
                 $podName = $podManifestFileName -replace ".yaml", ""
 
+                # The auditor should be unique per pod being audited:
                 $targetAuditor = $messageObject.Auditor
 
+                # obtain the CIS benchmark entry for the auditor in question:
                 $cisBenchmarkEntry = $cisBenchmarkTable | Where-Object -Property Auditor -eq $targetAuditor
 
                 # Generate object,populate property, and send to pipeline:
@@ -167,7 +172,11 @@ function ConvertFrom-RawSarif {
                     CisBenchmark    = $cisBenchmarkEntry.Benchmark
                     CisBenchmarkUrl = $cisBenchmarkEntry.Link
                 }
-                Write-Output -InputObject $auditFinding
+
+                # If the entry for the given auditor already exists, do not add it to the results table:
+                if (-not($uniqueResultsTable.ContainsKey($targetAuditor))) {
+                    $uniqueResultsTable.Add($targetAuditor, $auditFinding)
+                }
             }
             catch {
                 $sarifParsingExMessage = "Unable to parse SARIF input string."
@@ -175,6 +184,10 @@ function ConvertFrom-RawSarif {
                 Write-Error -Exception $FileFormatException -Category InvalidType -ErrorAction Stop
             }
         }
+    }
+    END {
+        # return only unique results based on the target Kubeaudit auditor:
+        return ($uniqueResultsTable.Values)
     }
 }
 
@@ -218,18 +231,18 @@ foreach ($targetNamespace in $Namespaces) {
     # 2. Generate a manifest for each pod
     # 3. Run kubeaudit against each manifest and persist results to $rawJsonResult variable
     # 4. Deserialize each $rawJsonResult via ConvertFrom-RawSarif and add to $allAuditFindings
-    $allAuditFindings += ($allPodNames | ForEach-Object {
-            # Build the file path for the resulting manifest file and write to directory:
-            $manifestFileName = "{0}.yaml" -f $_
-            $manifestFilePath = Join-Path -Path $ManifestDirectory -ChildPath $manifestFileName
-            kubectl get pod $_ --namespace $targetNamespace --output yaml | Out-File -FilePath $manifestFilePath
+    $allPodNames | ForEach-Object {
+        # Build the file path for the resulting manifest file and write to directory:
+        $manifestFileName = "{0}.yaml" -f $_
+        $manifestFilePath = Join-Path -Path $ManifestDirectory -ChildPath $manifestFileName
+        kubectl get pod $_ --namespace $targetNamespace --output yaml | Out-File -FilePath $manifestFilePath
 
-            # Run kubeaudit, get sarif output and assign it to the $rawJsonResult as a single string (via -join ""):
-            $rawJsonResult = (docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2> $null) -join ""
+        # Run kubeaudit, get sarif output and assign it to the $rawJsonResult as a single string (via -join ""):
+        $rawJsonResult = (docker run -v $ManifestDirectory/:/tmp $KubeauditDockerImage all -f /tmp/$manifestFileName --format="sarif" 2> $null) -join ""
 
-            # Deserialize and add item to array $allAuditFindings:
-            $rawJsonResult | ConvertFrom-RawSarif
-        })
+        # Deserialize and add item to array $allAuditFindings:
+        $allAuditFindings += $($rawJsonResult | ConvertFrom-RawSarif)
+    }
 
     # !SECTION
 
